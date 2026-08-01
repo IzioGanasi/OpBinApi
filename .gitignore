@@ -1,0 +1,29 @@
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Configuration & Environment Credentials
+.env
+!.env.example
+
+# IDE & Editor Configs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build & Package artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs & Temporary Data
+*.log
+scratch/
