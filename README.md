@@ -1,0 +1,2 @@
+# OpBinApi
+biblioteca API iqoption
