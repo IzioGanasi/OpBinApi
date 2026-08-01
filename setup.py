@@ -4,7 +4,7 @@ setup(
     name="opbin-api",
     version="1.0.0",
     description="Biblioteca SDK profissional Python para automação e negociação na corretora OpBin / IQ Option.",
-    author="Manoel",
+    author="Izio Ganasi",
     packages=find_packages(),
     install_requires=[
         "requests>=2.28.0",
