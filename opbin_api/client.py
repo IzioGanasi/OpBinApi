@@ -104,7 +104,6 @@ class OpBinAPI:
                                 result = "loose"
                                 pnl = -amount
 
-                            # Atualiza o saldo localmente
                             for b in self.balances:
                                 if b.get("id") == self.active_balance_id:
                                     current_bal = float(b.get("amount", 0.0))
@@ -175,16 +174,17 @@ class OpBinAPI:
             return self.blitz_payouts.get(active_id, self.payouts.get(active_id, 82.0))
         return self.payouts.get(active_id, 85.0)
 
-    def get_candles(self, active_id: int, size: int = 60, count: int = 10, timeout: int = 5) -> List[Dict]:
+    def get_candles(self, active_id: int, size: int = 60, count: int = 10, timeout: int = 8) -> List[Dict]:
         from .handlers import get_candles_payload
-        self.last_candles = []
-        self.router.send(get_candles_payload(active_id=active_id, size=size, count=count))
+        for attempt in range(3):
+            self.last_candles = []
+            self.router.send(get_candles_payload(active_id=active_id, size=size, count=count))
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if self.last_candles:
-                return self.last_candles
-            time.sleep(0.1)
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if self.last_candles:
+                    return self.last_candles
+                time.sleep(0.1)
 
         return []
 
@@ -206,7 +206,6 @@ class OpBinAPI:
         if c_close > 0.0:
             self.last_seen_price = c_close
 
-        # Atualiza a cotação mais recente em todas as ordens abertas para aquele ativo
         for pos_id, trade in self.active_trades.items():
             if trade.get("active_id") == active_id:
                 trade["last_seen_price"] = c_close

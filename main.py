@@ -178,12 +178,17 @@ def main():
     crossovers_history = {}
     trades_history = {}
 
-    # 1. Coleta Histórico Inicial de Velas
+    # 1. Coleta Histórico Inicial de Velas com Retry Resiliente
     print(f"[*] Carregando histórico inicial de velas para o ativo {ACTIVE_ID}...")
-    candle_history = api.get_candles(active_id=ACTIVE_ID, size=CANDLE_SIZE, count=60)
+    candle_history = []
+    for attempt in range(3):
+        candle_history = api.get_candles(active_id=ACTIVE_ID, size=CANDLE_SIZE, count=60, timeout=8)
+        if candle_history:
+            break
+        time.sleep(1)
 
     if not candle_history:
-        print("[ERR] Nao foi possivel obter o historico inicial de velas.")
+        print("[ERR] Não foi possível obter o histórico inicial de velas.")
         api.disconnect()
         return
 
