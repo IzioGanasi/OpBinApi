@@ -7,10 +7,12 @@ os.system("")
 
 # Garante suporte completo a UTF-8 no terminal Windows
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
-import asciichartpy as ac
-from opbin_api import OpBinAPI, adx
+from opbin_api import OpBinAPI, adx, AsciiChart
 
 
 def draw_bar(val: float, max_val: float = 60.0, length: int = 10) -> str:
@@ -37,7 +39,7 @@ def render_dashboard(
     last_log: str = ""
 ):
     """
-    Renderiza o Dashboard Fixo de Terminal com Indicadores Visuais de Cruzamento e Operações.
+    Renderiza o Dashboard Fixo de Terminal de Alta Resolução com Indicadores Visuais de Cruzamento e Operações.
     """
     time_str = time.strftime('%H:%M:%S')
     saldo_atual = api.get_balance("PRACTICE") or 0.0
@@ -56,92 +58,90 @@ def render_dashboard(
     pdi_bar = draw_bar(pdi_cur, 60.0, 8)
     ndi_bar = draw_bar(ndi_cur, 60.0, 8)
 
-    # 1. Gráfico ASCII do Preço de Fechamento (Candle Close)
-    candle_chart_str = ""
-    if len(close_series) >= 20:
-        sub_closes = close_series[-25:]
-        c_min = min(sub_closes)
-        c_max = max(sub_closes)
-        if c_min == c_max:
-            c_max += 0.00010
+    sub_count = 35
+    sub_closes = close_series[-sub_count:] if len(close_series) >= sub_count else close_series
+    sub_pdi = pdi_series[-sub_count:] if len(pdi_series) >= sub_count else pdi_series
+    sub_ndi = ndi_series[-sub_count:] if len(ndi_series) >= sub_count else ndi_series
+    sub_adx = adx_series[-sub_count:] if len(adx_series) >= sub_count else adx_series
+    sub_ts = sub_timestamps[-sub_count:] if len(sub_timestamps) >= sub_count else sub_timestamps
 
-        candle_chart_str = ac.plot(sub_closes, {
-            'height': 5,
-            'min': c_min,
-            'max': c_max,
-            'format': '{:8.5f}',
-            'colors': [ac.cyan]
-        })
-
-    # 2. Gráfico ASCII do ADX (+DI Verde | -DI Vermelho)
-    adx_chart_str = ""
-    if len(pdi_series) >= 20:
-        sub_pdi = pdi_series[-25:]
-        sub_ndi = ndi_series[-25:]
-        
-        all_vals = sub_pdi + sub_ndi
-        a_min = max(0.0, min(all_vals) - 2.0)
-        a_max = min(60.0, max(all_vals) + 2.0)
-        if a_min == a_max:
-            a_max += 5.0
-
-        adx_chart_str = ac.plot([sub_pdi, sub_ndi], {
-            'height': 6,
-            'min': a_min,
-            'max': a_max,
-            'format': '{:6.2f}',
-            'colors': [ac.green, ac.red]
-        })
-
-    # 3. Constrói a linha de marcadores de OPERAÇÕES ABERTAS (Preço no Gráfico)
-    trade_markers = []
-    for ts in sub_timestamps[-25:]:
+    # Prepara marcadores operacionais e linha de preço de ordem para o gráfico de PREÇO
+    price_markers = []
+    h_lines = []
+    
+    last_trade_price = None
+    for i, ts in enumerate(sub_ts):
         if ts in trades_history:
             tr = trades_history[ts]
-            d = tr["direction"]
-            p = tr["price"]
-            if d == "CALL":
-                trade_markers.append(f"\033[32m🟢▲[{p:.5f}]\033[0m")
-            else:
-                trade_markers.append(f"\033[31m🔴▼[{p:.5f}]\033[0m")
-        else:
-            trade_markers.append("─")
-    trade_marker_line = " ".join(trade_markers)
+            dir_str = tr.get("direction", "CALL")
+            price_val = tr.get("price", c_close)
+            last_trade_price = price_val
 
-    # 4. Constrói a linha de marcadores de CRUZAMENTOS (Sinais no ADX)
-    cross_markers = []
-    for ts in sub_timestamps[-25:]:
+            price_markers.append({
+                "index": i,
+                "value": price_val,
+                "direction": dir_str.lower(),
+                "color": AsciiChart.GREEN if dir_str == "CALL" else AsciiChart.RED
+            })
+
+    if last_trade_price is not None:
+        h_lines.append({
+            "value": last_trade_price,
+            "color": AsciiChart.YELLOW,
+            "label": f"Entrada ({last_trade_price:.5f})"
+        })
+
+    # 1. Renderiza o Gráfico do PREÇO
+    candle_chart_str = AsciiChart.render(
+        series={"Preço": (sub_closes, AsciiChart.CYAN)},
+        height=8,
+        width=55,
+        markers=price_markers,
+        h_lines=h_lines,
+        title="  \033[1;36m1. GRÁFICO DO CANDLE (PREÇO FECHAMENTO - CLOSE):\033[0m"
+    )
+
+    # Prepara marcadores de cruzamento para o gráfico do ADX
+    adx_markers = []
+    for i, ts in enumerate(sub_ts):
         if ts in crossovers_history:
             c_type = crossovers_history[ts]
-            if c_type == "CALL":
-                cross_markers.append("\033[32m🟢▲(CALL)\033[0m")
-            else:
-                cross_markers.append("\033[31m🔴▼(PUT)\033[0m")
-        else:
-            cross_markers.append("─")
-    cross_marker_line = " ".join(cross_markers)
+            val = sub_adx[i] if i < len(sub_adx) else 30.0
+            adx_markers.append({
+                "index": i,
+                "value": val,
+                "direction": c_type.lower(),
+                "color": AsciiChart.GREEN if c_type == "CALL" else AsciiChart.RED
+            })
+
+    # 2. Renderiza o Gráfico do ADX (+DI Verde | -DI Vermelho | ADX Amarelo)
+    adx_chart_str = AsciiChart.render(
+        series={
+            "+DI": (sub_pdi, AsciiChart.GREEN),
+            "-DI": (sub_ndi, AsciiChart.RED),
+            "ADX": (sub_adx, AsciiChart.YELLOW)
+        },
+        height=8,
+        width=55,
+        markers=adx_markers,
+        title="  \033[1;33m2. GRÁFICO DO ADX / +DI / -DI:\033[0m"
+    )
 
     # Monta a tela estática completa
     lines = []
-    lines.append("─" * 75)
+    lines.append("─" * 78)
     lines.append(f"  \033[1;36mOPBIN TRADING DASHBOARD\033[0m | ATIVO: \033[1m{active_id}\033[0m | PAYOUT: \033[1;32m{payout_atual:.1f}%\033[0m")
     lines.append(f"  MODALIDADE: \033[1;33m{option_type.upper()}\033[0m | SALDO: \033[1;32mR${saldo_atual:.2f}\033[0m | ESTRATÉGIA: \033[1;35m{execution_mode}\033[0m")
-    lines.append("─" * 75)
-    lines.append("  \033[1;36m1. GRÁFICO DO CANDLE (PREÇO FECHAMENTO - CLOSE):\033[0m")
-    lines.append("─" * 75)
+    lines.append("─" * 78)
     lines.append(candle_chart_str)
-    lines.append(f"  \033[1mMARCADORES DE OPERAÇÕES:\033[0m {trade_marker_line}")
-    lines.append("─" * 75)
-    lines.append("  \033[1;33m2. GRÁFICO DO ADX:\033[0m (\033[32m-- +DI (VERDE)\033[0m | \033[31m-- -DI (VERMELHO)\033[0m)")
-    lines.append("─" * 75)
+    lines.append("─" * 78)
     lines.append(adx_chart_str)
-    lines.append(f"  \033[1mMARCADORES DE CRUZAMENTO:\033[0m {cross_marker_line}")
-    lines.append("─" * 75)
+    lines.append("─" * 78)
     lines.append(f"  STATUS ATUAL: [{time_str}] {trend_symbol} O:{c_open:.5f} C:{c_close:.5f}")
     lines.append(f"  MÉTRICAS ADX : \033[32m+DI [{pdi_bar}] {pdi_cur:4.1f}\033[0m | \033[31m-DI [{ndi_bar}] {ndi_cur:4.1f}\033[0m | ADX: {adx_cur:4.1f}")
-    lines.append("─" * 75)
+    lines.append("─" * 78)
     lines.append(f"  ÚLTIMO EVENTO: \033[1;33m{last_log}\033[0m")
-    lines.append("─" * 75)
+    lines.append("─" * 78)
 
     full_frame = "\033[H\033[2J" + "\n".join(lines) + "\n"
     sys.stdout.write(full_frame)
@@ -162,7 +162,7 @@ def main():
     # -------------------------------------------------------------------------
     ACTIVE_ID = 76              # EURUSD-OTC
     CANDLE_SIZE = 60            # M1 (Velas de 60 segundos)
-    VALOR_ORDEM = 10.0          # Valor da Entrada em R$ ou USD
+    VALOR_ORDEM = 2.0           # Valor da Entrada em R$ ou USD
     OPTION_TYPE = "blitz"       # Opcoes: "blitz" ou "binary"
     BLITZ_DURATION = 60         # Duracao da Blitz em segundos (ex: 60s, 30s, 5s)
     
@@ -172,21 +172,17 @@ def main():
 
     # "ON_CANDLE_CLOSE"   -> Aguarda a vela fechar.
     # "IMMEDIATE_ON_TICK" -> Opera imediatamente no tick em que o cruzamento ocorrer.
-    CROSSOVER_TIMING = "ON_CANDLE_CLOSE"
+    CROSSOVER_TIMING = "IMMEDIATE_ON_TICK"
     # -------------------------------------------------------------------------
 
     last_processed_candle_id = None
-    last_log_event = "Aguardando próximo sinal..."
+    last_log_event = "Aguardando primeiro tick de cotação..."
+    crossovers_history = {}
+    trades_history = {}
 
-    crossovers_history = {}  # {candle_ts -> "CALL" / "PUT"}
-    trades_history = {}      # {candle_ts -> {"direction": "CALL"/"PUT", "price": float}}
-
-    print("[*] Limpando tela e inicializando Dashboard Fixo...")
-    sys.stdout.write("\033[2J\033[H")
-    sys.stdout.flush()
-
-    # 1. Carrega o historico inicial de velas para aquecimento do ADX
-    candle_history = api.get_candles(active_id=ACTIVE_ID, size=CANDLE_SIZE, count=50)
+    # 1. Coleta Histórico Inicial de Velas
+    print(f"[*] Carregando histórico inicial de velas para o ativo {ACTIVE_ID}...")
+    candle_history = api.get_candles(active_id=ACTIVE_ID, size=CANDLE_SIZE, count=60)
 
     if not candle_history:
         print("[ERR] Nao foi possivel obter o historico inicial de velas.")

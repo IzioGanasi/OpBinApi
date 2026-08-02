@@ -1,6 +1,7 @@
 from .client import OpBinAPI
 from .config import IQ_IDENTIFIER, IQ_PASSWORD, WS_URL, IQ_LOGIN_URL
 from .indicators import IndicatorFactory, rsi, sma, ema, wma, rma, alma, adx
+from .ascii_chart import AsciiChart
 
 __version__ = "1.0.0"
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "wma",
     "rma",
     "alma",
-    "adx"
+    "adx",
+    "AsciiChart"
 ]
