@@ -62,7 +62,6 @@ def render_dashboard(
     sub_closes = close_series[-sub_count:] if len(close_series) >= sub_count else close_series
     sub_pdi = pdi_series[-sub_count:] if len(pdi_series) >= sub_count else pdi_series
     sub_ndi = ndi_series[-sub_count:] if len(ndi_series) >= sub_count else ndi_series
-    sub_adx = adx_series[-sub_count:] if len(adx_series) >= sub_count else adx_series
     sub_ts = sub_timestamps[-sub_count:] if len(sub_timestamps) >= sub_count else sub_timestamps
 
     # Prepara marcadores operacionais e linha de preço de ordem para o gráfico de PREÇO
@@ -106,7 +105,7 @@ def render_dashboard(
     for i, ts in enumerate(sub_ts):
         if ts in crossovers_history:
             c_type = crossovers_history[ts]
-            val = sub_adx[i] if i < len(sub_adx) else 30.0
+            val = sub_pdi[i] if i < len(sub_pdi) else 30.0
             adx_markers.append({
                 "index": i,
                 "value": val,
@@ -114,17 +113,16 @@ def render_dashboard(
                 "color": AsciiChart.GREEN if c_type == "CALL" else AsciiChart.RED
             })
 
-    # 2. Renderiza o Gráfico do ADX (+DI Verde | -DI Vermelho | ADX Amarelo)
+    # 2. Renderiza o Gráfico do ADX apenas com +DI (Verde) e -DI (Vermelho)
     adx_chart_str = AsciiChart.render(
         series={
             "+DI": (sub_pdi, AsciiChart.GREEN),
-            "-DI": (sub_ndi, AsciiChart.RED),
-            "ADX": (sub_adx, AsciiChart.YELLOW)
+            "-DI": (sub_ndi, AsciiChart.RED)
         },
         height=8,
         width=55,
         markers=adx_markers,
-        title="  \033[1;33m2. GRÁFICO DO ADX / +DI / -DI:\033[0m"
+        title="  \033[1;33m2. GRÁFICO DO ADX (+DI Verde | -DI Vermelho):\033[0m"
     )
 
     # Monta a tela estática completa
@@ -168,11 +166,11 @@ def main():
     
     # "CLOSED_CANDLE"    -> Estratégia Tradicional: Cruzamento clássico +DI / -DI no fechamento.
     # "PREDICTIVE_SLOPE" -> Estratégia Preditiva: Entra 1 candle antes via inclinação.
-    EXECUTION_MODE = "PREDICTIVE_SLOPE" 
+    EXECUTION_MODE = "CLOSE_CANDLE" 
 
     # "ON_CANDLE_CLOSE"   -> Aguarda a vela fechar.
     # "IMMEDIATE_ON_TICK" -> Opera imediatamente no tick em que o cruzamento ocorrer.
-    CROSSOVER_TIMING = "IMMEDIATE_ON_TICK"
+    CROSSOVER_TIMING = "ON_CANDLE_CLOSE"
     # -------------------------------------------------------------------------
 
     last_processed_candle_id = None

@@ -49,7 +49,7 @@ class BrailleCanvas:
 class AsciiChart:
     """
     Gerador de Gráficos de Curvas Suaves Sub-Pixel (Estilo Calculadora Gráfica / TI-84).
-    Linhas 100% contínuas, arredondadas e de alta resolução sem bordas ásperas ("arame farpado").
+    Linhas 100% contínuas, arredondadas e de alta resolução sem bordas ásperas.
     """
     RESET = "\033[0m"
     GREEN = "\033[1;32m"
@@ -162,7 +162,7 @@ class AsciiChart:
                 if 0 <= col < width and 0 <= row < height:
                     marker_grid[row][col] = f"{m_color}{sym}{AsciiChart.RESET}"
 
-        # 5. Mescla as camadas no buffer do terminal preservando as cores de cada série
+        # 5. Mescla as camadas no buffer do terminal usando exclusivamente as cores das séries
         output_lines = []
 
         if title:
@@ -186,7 +186,7 @@ class AsciiChart:
                     row_str += marker_grid[r][c]
                     continue
 
-                # Prioridade 2: Posição de Curvas Braille (Combinando bits de séries ativas)
+                # Prioridade 2: Posição de Curvas Braille (Preserva 100% as cores originais da série)
                 active_series = []
                 combined_bits = 0
                 for s_name, grid in layer_grids.items():
@@ -196,13 +196,7 @@ class AsciiChart:
 
                 if combined_bits > 0:
                     braille_char = chr(0x2800 + combined_bits)
-                    if len(active_series) == 1:
-                        # Cor pura da série
-                        col = layer_colors[active_series[0]]
-                    else:
-                        # Cruzamento de linhas -> Cor de destaque Branca
-                        col = AsciiChart.WHITE
-                    
+                    col = layer_colors[active_series[0]]
                     row_str += f"{col}{braille_char}{AsciiChart.RESET}"
                     continue
 
