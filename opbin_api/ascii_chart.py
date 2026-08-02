@@ -3,20 +3,63 @@ import math
 from typing import List, Dict, Tuple, Optional
 
 
-def _supports_utf8() -> bool:
-    """Verifica se o ambiente atual suporta caracteres Unicode/UTF-8 no terminal."""
-    encoding = getattr(sys.stdout, "encoding", "") or ""
-    return "utf" in encoding.lower() or "utf-8" in encoding.lower()
+class BrailleCanvas:
+    """
+    Canvas Sub-Pixel de alta resolução utilizando a matriz Braille Unicode (2x4 pontos por caractere).
+    Oferece 4x mais resolução vertical e 2x mais resolução horizontal que o terminal padrão.
+    """
+    MAP = [
+        [0x01, 0x02, 0x04, 0x40],  # Coluna 0 (pontos 1, 2, 3, 7)
+        [0x08, 0x10, 0x20, 0x80]   # Coluna 1 (pontos 4, 5, 6, 8)
+    ]
+
+    def __init__(self, char_width: int, char_height: int):
+        self.char_width = char_width
+        self.char_height = char_height
+        self.pixel_width = char_width * 2
+        self.pixel_height = char_height * 4
+
+        self.grid = [[0 for _ in range(char_width)] for _ in range(char_height)]
+        self.colors = [[None for _ in range(char_width)] for _ in range(char_height)]
+        self.override_chars = {}
+
+    def set_pixel(self, px: int, py: int, color: str = ""):
+        if 0 <= px < self.pixel_width and 0 <= py < self.pixel_height:
+            cx = px // 2
+            cy = py // 4
+            dot_x = px % 2
+            dot_y = py % 4
+
+            self.grid[cy][cx] |= self.MAP[dot_x][dot_y]
+            if color:
+                self.colors[cy][cx] = color
+
+    def draw_line(self, x0: int, y0: int, x1: int, y1: int, color: str = ""):
+        """Algoritmo de linha de Bresenham em resolução de sub-pixel."""
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+
+        while True:
+            self.set_pixel(x0, y0, color)
+            if x0 == x1 and y0 == y1:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x0 += sx
+            if e2 < dx:
+                err += dx
+                y0 += sy
 
 
 class AsciiChart:
     """
-    Biblioteca de renderização de gráficos ASCII / Unicode em alta definição para terminal.
-    Projetada especificamente para o mercado financeiro com suporte a múltiplas linhas,
-    linhas de preço de entrada, marcadores de Call/Put e ANSI colors.
+    Gerador de Gráficos Sub-Pixel de Alta Precisão em Estilo Calculadora Gráfica.
+    Projetado para gráficos financeiros, indicadores técnicos e calculadoras no terminal.
     """
-    
-    # Cores ANSI
     RESET = "\033[0m"
     GREEN = "\033[1;32m"
     RED = "\033[1;31m"
@@ -35,40 +78,15 @@ class AsciiChart:
         title: Optional[str] = None,
         h_lines: Optional[List[Dict]] = None
     ) -> str:
-        """
-        Renderiza um gráfico ASCII colorido de alta precisão.
-        
-        :param series: Dicionário {"NomeLinha": (lista_de_valores, codigo_cor_ansi)}
-        :param height: Altura em linhas de terminal
-        :param width: Largura em colunas
-        :param markers: Marcadores de eventos [{"index": 12, "symbol": "⬆", "color": "\033[1;32m", "label": "CALL"}]
-        :param title: Título opcional do gráfico
-        :param h_lines: Linhas horizontais de referência [{"value": 1.1650, "color": "\033[1;33m", "label": "Ordem"}]
-        """
         if hasattr(sys.stdout, "reconfigure"):
             try:
                 sys.stdout.reconfigure(encoding="utf-8")
             except Exception:
                 pass
 
-        use_utf = _supports_utf8()
-
-        # Caracteres adaptativos conforme capacidade do terminal
-        c_up = "╱" if use_utf else "/"
-        c_down = "╲" if use_utf else "\\"
-        c_flat = "─" if use_utf else "-"
-        c_point = "•" if use_utf else "*"
-        c_hline = "╌" if use_utf else "-"
-        c_cross = "┼" if use_utf else "+"
-        c_corner = "└" if use_utf else "+"
-
-        if not series:
-            return ""
-
         markers = markers or []
         h_lines = h_lines or []
 
-        # Determina o menor e maior valor para escala no eixo Y
         all_vals = []
         for name, (vals, _) in series.items():
             valid_vals = [v for v in vals if v is not None and not math.isnan(v)]
@@ -90,80 +108,60 @@ class AsciiChart:
 
         val_range = max_val - min_val
 
-        # Prepara a grade (matrix 2D de caracteres)
-        grid = [[" " for _ in range(width)] for _ in range(height)]
-        color_grid = [[AsciiChart.RESET for _ in range(width)] for _ in range(height)]
+        canvas = BrailleCanvas(width, height)
 
-        def val_to_y(val: float) -> int:
+        def val_to_pixel_y(val: float) -> int:
             normalized = (val - min_val) / val_range
-            y = int(round(normalized * (height - 1)))
-            return max(0, min(height - 1, y))
+            py = int(round(normalized * (canvas.pixel_height - 1)))
+            return max(0, min(canvas.pixel_height - 1, py))
 
-        # 1. Linhas Horizontais de Referência
+        # 1. Linhas Horizontais de Referência (ex: Nível de Entrada da Ordem)
         for hl in h_lines:
             hl_val = hl.get("value")
             hl_color = hl.get("color", AsciiChart.GRAY)
             if hl_val is not None:
-                y = val_to_y(hl_val)
-                row = height - 1 - y
-                for x in range(width):
-                    grid[row][x] = c_hline
-                    color_grid[row][x] = hl_color
+                py = canvas.pixel_height - 1 - val_to_pixel_y(hl_val)
+                for px in range(0, canvas.pixel_width, 2):
+                    canvas.set_pixel(px, py, hl_color)
 
-        # 2. Séries de Linhas
-        num_points = 1
+        # 2. Curvas Contínuas em Alta Resolução Sub-Pixel (Bresenham)
+        max_len = 1
         for name, (vals, color) in series.items():
             if not vals:
                 continue
 
-            num_points = max(num_points, len(vals))
-            step = len(vals) / float(width) if len(vals) > width else 1.0
+            max_len = max(max_len, len(vals))
+            valid_pairs = []
+            for i, v in enumerate(vals):
+                if v is not None and not math.isnan(v):
+                    px = int(i * (canvas.pixel_width - 1) / float(len(vals) - 1)) if len(vals) > 1 else 0
+                    py = canvas.pixel_height - 1 - val_to_pixel_y(v)
+                    valid_pairs.append((px, py))
 
-            for x in range(width):
-                data_idx = int(x * step) if len(vals) > width else x
-                if data_idx >= len(vals):
-                    break
+            for k in range(len(valid_pairs) - 1):
+                x0, y0 = valid_pairs[k]
+                x1, y1 = valid_pairs[k + 1]
+                canvas.draw_line(x0, y0, x1, y1, color)
 
-                val = vals[data_idx]
-                if val is None or math.isnan(val):
-                    continue
-
-                y = val_to_y(val)
-                row = height - 1 - y
-
-                if data_idx < len(vals) - 1 and vals[data_idx + 1] is not None:
-                    next_y = val_to_y(vals[data_idx + 1])
-                    if next_y > y:
-                        char = c_up
-                    elif next_y < y:
-                        char = c_down
-                    else:
-                        char = c_flat
-                else:
-                    char = c_point
-
-                grid[row][x] = char
-                color_grid[row][x] = color
-
-        # 3. Marcadores (⬆ CALL, ⬇ PUT, • Sinal)
+        # 3. Marcadores Operacionais Sobrepostos (⬆ CALL / ⬇ PUT)
         for m in markers:
             idx = m.get("index")
             val = m.get("value")
             sym = m.get("symbol")
             if not sym:
-                sym = ("⬆" if use_utf else "^") if m.get("direction") == "call" else ("⬇" if use_utf else "v")
+                sym = "⬆" if m.get("direction") == "call" else "⬇"
             
             m_color = m.get("color", AsciiChart.WHITE)
 
-            if idx is not None:
-                x = int(idx * (width / float(num_points))) if num_points > width else idx
-                if 0 <= x < width:
-                    y = val_to_y(val) if val is not None else 0
-                    row = height - 1 - y
-                    grid[row][x] = sym
-                    color_grid[row][x] = m_color
+            if idx is not None and val is not None:
+                px = int(idx * (canvas.pixel_width - 1) / float(max_len - 1)) if max_len > 1 else 0
+                py = canvas.pixel_height - 1 - val_to_pixel_y(val)
+                cx = px // 2
+                cy = py // 4
+                if 0 <= cx < width and 0 <= cy < height:
+                    canvas.override_chars[(cy, cx)] = (sym, m_color)
 
-        # 4. Monta Saída com Eixo Y
+        # 4. Formata as linhas do Canvas com Eixo Y e Margens Elegantes
         output_lines = []
 
         if title:
@@ -172,7 +170,7 @@ class AsciiChart:
         for r in range(height):
             y_fraction = (height - 1 - r) / float(height - 1)
             line_val = min_val + (y_fraction * val_range)
-            
+
             if max_val > 1000:
                 y_label = f"{line_val:8.2f}"
             elif max_val > 1:
@@ -182,24 +180,33 @@ class AsciiChart:
 
             row_str = ""
             for c in range(width):
-                cell_char = grid[r][c]
-                cell_color = color_grid[r][c]
-                row_str += f"{cell_color}{cell_char}{AsciiChart.RESET}"
+                if (r, c) in canvas.override_chars:
+                    sym, col = canvas.override_chars[(r, c)]
+                    row_str += f"{col}{sym}{AsciiChart.RESET}"
+                else:
+                    bits = canvas.grid[r][c]
+                    color = canvas.colors[r][c] or AsciiChart.CYAN
+                    
+                    if bits > 0:
+                        braille_char = chr(0x2800 + bits)
+                        row_str += f"{color}{braille_char}{AsciiChart.RESET}"
+                    else:
+                        row_str += " "
 
-            output_lines.append(f"{AsciiChart.GRAY}{y_label} {c_cross}{AsciiChart.RESET}{row_str}")
+            output_lines.append(f"{AsciiChart.GRAY}{y_label} │{AsciiChart.RESET}{row_str}")
 
         # Eixo X
-        output_lines.append(f"{AsciiChart.GRAY}         {c_corner}{c_flat * width}{AsciiChart.RESET}")
+        output_lines.append(f"{AsciiChart.GRAY}         └{'─' * width}{AsciiChart.RESET}")
 
         # Legenda
         legend_parts = []
         for name, (_, color) in series.items():
-            legend_parts.append(f"{color}{c_flat * 2} {name}{AsciiChart.RESET}")
-        
+            legend_parts.append(f"{color}⠤⠤ {name}{AsciiChart.RESET}")
+
         for hl in h_lines:
             if "label" in hl:
                 hl_color = hl.get("color", AsciiChart.GRAY)
-                legend_parts.append(f"{hl_color}{c_hline * 2} {hl['label']}{AsciiChart.RESET}")
+                legend_parts.append(f"{hl_color}╌╌ {hl['label']}{AsciiChart.RESET}")
 
         if legend_parts:
             output_lines.append("   " + "   ".join(legend_parts))
