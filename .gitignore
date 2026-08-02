@@ -27,3 +27,7 @@ dist/
 # Logs & Temporary Data
 *.log
 scratch/
+broker_messages.txt
+websocket_captured.jsonl
+debug_trade.py
+OpBinApi/

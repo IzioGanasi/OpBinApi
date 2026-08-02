@@ -9,13 +9,10 @@ from .handlers import (
     handle_profile,
     handle_candles, handle_candle_generated,
     handle_position_changed, handle_option, handle_digital_option_placed, handle_history_positions,
-    send_initial_client_settings,
-    handle_instruments, handle_traders_mood, handle_top_assets, handle_underlying_list,
+    handle_instruments, handle_initialization_data, handle_traders_mood, handle_top_assets, handle_underlying_list,
     handle_user_settings, handle_user_availability,
     handle_currencies_list,
-    handle_chat_message, handle_leaderboard,
-    handle_bonus, handle_promo_codes,
-    handle_faq, handle_videos, handle_script_indicators
+    handle_chat_message, handle_leaderboard
 )
 
 DEFAULT_HEADERS = {
@@ -35,7 +32,7 @@ class IQWebSocketRouter:
         self.thread = None
         self.routes = {}
 
-        # Mapeamento das 84 rotas conhecidas
+        # Mapeamento das rotas
         self.register_route("authenticate", lambda r, d: None)
         self.register_route("timeSync", handle_timesync)
         self.register_route("authenticated", handle_authenticated)
@@ -49,34 +46,34 @@ class IQWebSocketRouter:
         self.register_route("forget-user-status", handle_user_settings)
         self.register_route("unsubscribeMessage", lambda r, d: None)
         self.register_route("user-settings", handle_user_settings)
-        self.register_route("bonus", handle_bonus)
+        self.register_route("bonus", handle_user_settings)
         self.register_route("available-balances", handle_balances)
         self.register_route("currencies-list", handle_currencies_list)
         self.register_route("verification-init-data", handle_user_settings)
         self.register_route("client-manager-contact-info", handle_user_settings)
         self.register_route("additional-blocks", handle_user_settings)
         self.register_route("resources", handle_user_settings)
-        self.register_route("traderoom-promo-codes", handle_promo_codes)
-        self.register_route("faq", handle_faq)
+        self.register_route("traderoom-promo-codes", handle_user_settings)
+        self.register_route("faq", handle_user_settings)
         self.register_route("balances", handle_balances)
         self.register_route("subscription-balance-changed", handle_balances)
         self.register_route("marginal-balance", handle_balances)
         self.register_route("currency", handle_currencies_list)
         self.register_route("customer-steps", handle_user_settings)
-        self.register_route("script-indicators", handle_script_indicators)
-        self.register_route("standard-library", handle_script_indicators)
+        self.register_route("script-indicators", handle_user_settings)
+        self.register_route("standard-library", handle_user_settings)
         self.register_route("features", handle_user_settings)
         self.register_route("feed-languages", handle_user_settings)
         self.register_route("currency-updated", handle_currencies_list)
         self.register_route("positions", handle_history_positions)
         self.register_route("underlying-list", handle_underlying_list)
         self.register_route("trading-volume", handle_instruments)
-        self.register_route("active-promo-codes", handle_promo_codes)
+        self.register_route("active-promo-codes", handle_user_settings)
         self.register_route("chat-moderator-status", handle_chat_message)
         self.register_route("chat-ban-status", handle_chat_message)
-        self.register_route("initialization-data", handle_user_settings)
-        self.register_route("used-promo-codes", handle_promo_codes)
-        self.register_route("available-promo-codes", handle_promo_codes)
+        self.register_route("initialization-data", handle_initialization_data)
+        self.register_route("used-promo-codes", handle_user_settings)
+        self.register_route("available-promo-codes", handle_user_settings)
         self.register_route("chat-room", handle_chat_message)
         self.register_route("orders", handle_history_positions)
         self.register_route("overnight-fee", handle_instruments)
@@ -87,31 +84,32 @@ class IQWebSocketRouter:
         self.register_route("traders-mood", handle_traders_mood)
         self.register_route("first-candles", handle_candles)
         self.register_route("currency-list", handle_currencies_list)
-        self.register_route("popups", handle_promo_codes)
+        self.register_route("popups", handle_user_settings)
         self.register_route("chat-required-trading-volume", handle_chat_message)
         self.register_route("set-user-settings-reply", handle_user_settings)
         self.register_route("chat-message", handle_chat_message)
         self.register_route("leaderboard-position", handle_leaderboard)
         self.register_route("option-insurance", handle_position_changed)
-        self.register_route("video-categories", handle_videos)
+        self.register_route("video-categories", handle_user_settings)
         self.register_route("traders-mood-changed", handle_traders_mood)
         self.register_route("profitable-countries", handle_leaderboard)
-        self.register_route("templates", handle_script_indicators)
+        self.register_route("templates", handle_user_settings)
         self.register_route("presets", handle_instruments)
         self.register_route("candle-generated", handle_candle_generated)
-        self.register_route("video-tags", handle_videos)
+        self.register_route("video-tags", handle_user_settings)
         self.register_route("candles", handle_candles)
         self.register_route("history-positions", handle_history_positions)
         self.register_route("active", handle_instruments)
         self.register_route("instruments-list", handle_instruments)
         self.register_route("top-assets", handle_top_assets)
-        self.register_route("videos", handle_videos)
+        self.register_route("videos", handle_user_settings)
         self.register_route("top-assets-updated", handle_top_assets)
         self.register_route("instruments", handle_instruments)
         self.register_route("digital-option-client-price-generated", handle_digital_option_placed)
         self.register_route("underlying-list-changed", handle_underlying_list)
         self.register_route("user-availability", handle_user_availability)
         self.register_route("option", handle_option)
+        self.register_route("option-rejected", handle_option)
         self.register_route("position-changed", handle_position_changed)
         self.register_route("subscription", handle_balances)
         self.register_route("balance-changed", handle_balances)
@@ -154,7 +152,6 @@ class IQWebSocketRouter:
     def _on_open(self, ws, ssid: str):
         print("[*] Conexão WebSocket estabelecida com sucesso!")
         self.send(get_auth_payload(ssid))
-        send_initial_client_settings(self)
         if self.api:
             self.api._resubscribe_all()
 

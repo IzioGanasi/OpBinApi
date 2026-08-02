@@ -23,3 +23,6 @@ IQ_IDENTIFIER = os.getenv("IQ_IDENTIFIER", "")
 IQ_PASSWORD = os.getenv("IQ_PASSWORD", "")
 IQ_LOGIN_URL = os.getenv("IQ_LOGIN_URL", "https://auth.iqoption.com/api/v2/login")
 WS_URL = os.getenv("WS_URL", "wss://ws.iqoption.com/echo/websocket")
+
+OPBIN_EMAIL = IQ_IDENTIFIER
+OPBIN_PASSWORD = IQ_PASSWORD
