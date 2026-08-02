@@ -24,10 +24,13 @@ build/
 dist/
 *.egg-info/
 
-# Logs & Temporary Data
-*.log
-scratch/
+# Heavy dumps & raw broker assets (>100MB)
+broker_assets/
 broker_messages.txt
 websocket_captured.jsonl
 debug_trade.py
 OpBinApi/
+
+# Logs & Temporary Data
+*.log
+scratch/
