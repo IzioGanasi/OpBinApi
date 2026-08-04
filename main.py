@@ -321,11 +321,14 @@ def main():
 
     api.get_realtime_candles(active_id=ACTIVE_ID, size=CANDLE_SIZE, callback=ao_receber_vela)
 
+    # 4. Loop Principal com Proteção de Auto-Reconexão Infinita
     try:
         while True:
+            if not api.is_connected and not api._is_reconnecting:
+                api.reconnect()
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n\n[-] Bot encerrado pelo usuario.")
+        print("\n\n[-] Bot encerrado manualmente pelo usuario.")
         api.disconnect()
 
 

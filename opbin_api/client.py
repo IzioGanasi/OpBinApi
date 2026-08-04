@@ -6,7 +6,7 @@ from .router import IQWebSocketRouter
 
 class OpBinAPI:
     """
-    Cliente Principal da SDK OpBinApi com monitoramento em tempo real de posições e resultados.
+    Cliente Principal da SDK OpBinApi com reconexão automática infinita e monitoramento em tempo real.
     """
     def __init__(self, email: str = None, password: str = None, active_balance_id: int = None):
         self.email = email
@@ -17,6 +17,7 @@ class OpBinAPI:
         self.router = IQWebSocketRouter(self.ws_url, api_instance=self)
 
         self.is_connected = False
+        self._is_reconnecting = False
         self.balances = []
         self.profile = {}
         self.candles = {}
@@ -36,7 +37,7 @@ class OpBinAPI:
         self.positions_history = {}
         self.last_buy_attempt = {}
         self.last_seen_price = 0.0
-        self.active_trades = {}  # {pos_id -> dict com dados da ordem para monitoramento do resultado}
+        self.active_trades = {}
 
         self.realtime_candle_callbacks = {}
         self.position_callbacks = []
@@ -77,14 +78,61 @@ class OpBinAPI:
         print("[-] Tempo limite esgotado ao aguardar conexão WebSocket.")
         return False
 
+    def reconnect(self) -> bool:
+        """
+        Executa reconexão automática infinita em caso de queda de internet ou desconexão do servidor.
+        Mapeia novamente a conta ativa e restaura todas as inscrições em tempo real.
+        """
+        if self._is_reconnecting or self._stop_keeper:
+            return False
+
+        self._is_reconnecting = True
+        print("\n\033[1;33m[*] CONEXÃO PERDIDA! Iniciando ciclo de reconexão automática em segundo plano...\033[0m")
+        self.is_connected = False
+
+        attempt = 1
+        while not self._stop_keeper:
+            try:
+                print(f"[*] Tentativa de reconexão #{attempt}...")
+                from .http_login import get_iq_ssid
+                ssid = get_iq_ssid(self.email, self.password)
+                
+                if ssid:
+                    print("[*] SSID reobtido com sucesso. Reconectando ao WebSocket...")
+                    self.router.connect_async(ssid)
+                    
+                    rec_start = time.time()
+                    while time.time() - rec_start < 8:
+                        if self.is_connected:
+                            print("\033[1;32m[+] RECONECTADO COM SUCESSO AO SERVIDOR WEBSOCKET!\033[0m")
+                            if self.active_balance_id:
+                                from .handlers import get_select_active_balance_payload
+                                self.router.send(get_select_active_balance_payload(self.active_balance_id))
+                            self._resubscribe_all()
+                            self._is_reconnecting = False
+                            return True
+                        time.sleep(0.2)
+            except Exception as e:
+                print(f"[-] Erro durante reconexão: {e}")
+
+            attempt += 1
+            print("[*] Nova tentativa de reconexão em 3 segundos...")
+            time.sleep(3)
+
+        self._is_reconnecting = False
+        return False
+
     def _start_trade_monitor(self):
         """
-        Thread de segundo plano que monitora o tempo de expiração de ordens ativas
-        e gera automaticamente os resultados de WIN/LOSS na falta de evento do WebSocket.
+        Thread de segundo plano que monitora expiração de ordens e aciona auto-reconexão se a rede cair.
         """
         def monitor_loop():
             while not self._stop_keeper:
                 try:
+                    # Se a conexão caiu, dispara auto-reconexão imediatamente
+                    if not self.is_connected and not self._is_reconnecting and not self._stop_keeper:
+                        self.reconnect()
+
                     now = time.time()
                     for pos_id, trade in list(self.active_trades.items()):
                         if now >= trade["expiration_time"]:
@@ -221,9 +269,13 @@ class OpBinAPI:
                 cb(position)
 
     def _resubscribe_all(self):
-        from .handlers import get_subscribe_candle_payload
-        for act_id in list(self.realtime_candle_callbacks.keys()):
-            self.router.send(get_subscribe_candle_payload(act_id, 60))
+        from .handlers import get_subscribe_candle_payload, get_subscribe_positions_state_payload
+        try:
+            self.router.send(get_subscribe_positions_state_payload())
+            for act_id in list(self.realtime_candle_callbacks.keys()):
+                self.router.send(get_subscribe_candle_payload(act_id, 60))
+        except Exception as e:
+            print(f"[-] Erro ao ressubcrever eventos: {e}")
 
     def buy_binary(self, active_id: int, amount: float, direction: str, duration: int = 1) -> bool:
         from .handlers import get_buy_binary_payload
